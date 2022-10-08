@@ -11,7 +11,7 @@
       <input type="search" style="flex: 1 1" /><button>expand/collapse</button>
       <input type="submit" />
     </div>
-    <div><button>refresh</button></div>
+    <div><button onclick="load()">refresh</button></div>
     <ul id="ul"></ul>
     <template id="list-item">
       <li>
@@ -40,14 +40,21 @@
         { id: '222', title: 'todo2' },
         { id: '333', title: 'todo3' },
       ]
-      const ul = document.getElementById('ul')
-      const template = document.getElementById('list-item')
-      todos.forEach((v) => {
-        const item = template.content.cloneNode(true)
-        const title = item.getElementById('title')
-        title.textContent = v.title
-        ul.append(item)
-      })
+
+      async function load() {
+        const ul = document.getElementById('ul')
+        ul.textContent = null
+        const res = await fetch('/todos')
+        const data = await res.json()
+        todos.splice(0, todos.length, ...data)
+        const template = document.getElementById('list-item')
+        todos.forEach((v) => {
+          const item = template.content.cloneNode(true)
+          const title = item.getElementById('title')
+          title.textContent = v.title
+          ul.append(item)
+        })
+      }
     </script>
   </body>
 </html>
