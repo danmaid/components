@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Example</title>
+    <script src="dm-test.js"></script>
+    <script src="stub.js" type="module"></script>
+  </head>
+
+  <body>
+    <div style="display: flex">
+      <input type="search" style="flex: 1 1" /><button>expand/collapse</button>
+      <input type="submit" />
+    </div>
+    <div><button>refresh</button></div>
+    <ul id="ul"></ul>
+    <template id="list-item">
+      <li>
+        <div style="display: flex; border-bottom: 1px solid grey">
+          <span id="title" style="flex: 1 1"></span>
+          <span id="last" style="flex: 1 1; display: flex">
+            <span id="comment" style="flex: 1 1"></span>
+            <button>expand/collapse</button>
+          </span>
+          <span id="action">
+            <button>do</button>
+            <button>done</button>
+            <button>pause</button>
+          </span>
+        </div>
+        <div>
+          <label for="comment">comment</label>
+          <textarea id="comment"></textarea>
+          <input type="submit" />
+        </div>
+      </li>
+    </template>
+    <script>
+      const todos = [
+        { id: '111', title: 'todo1' },
+        { id: '222', title: 'todo2' },
+        { id: '333', title: 'todo3' },
+      ]
+      const ul = document.getElementById('ul')
+      const template = document.getElementById('list-item')
+      todos.forEach((v) => {
+        const item = template.content.cloneNode(true)
+        const title = item.getElementById('title')
+        title.textContent = v.title
+        ul.append(item)
+      })
+    </script>
+  </body>
+</html>
