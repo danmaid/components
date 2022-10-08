@@ -2,49 +2,56 @@
 <html>
   <head>
     <title>Example</title>
-    <script src="dm-test.js"></script>
+    <script src="dm-radio.js"></script>
     <script src="stub.js" type="module"></script>
+    <style>
+      input[type='radio']:checked {
+        box-shadow: 0 0 0 3px orange;
+      }
+    </style>
   </head>
 
   <body>
+    <dm-status-radio></dm-status-radio>
+    <dm-status-radio value="done"></dm-status-radio>
     <div style="display: flex">
-      <input type="search" style="flex: 1 1" /><button>expand/collapse</button>
-      <input type="submit" />
+      <input type="search" style="flex: 1 1" />
     </div>
     <div><button onclick="load()">refresh</button></div>
-    <ul id="ul"></ul>
+    <form id="update-form">
+      <ul id="ul"></ul>
+    </form>
+    <form name="add-form" style="display: flex" onsubmit="add(); return false">
+      <textarea id="title" style="flex: 1 1"></textarea>
+      <input type="submit" value="add" />
+    </form>
+
     <template id="list-item">
       <li>
         <div style="display: flex; border-bottom: 1px solid grey">
           <span id="title" style="flex: 1 1"></span>
-          <span id="last" style="flex: 1 1; display: flex">
-            <span id="comment" style="flex: 1 1"></span>
-            <button>expand/collapse</button>
-          </span>
           <span id="action">
-            <button>do</button>
-            <button>done</button>
-            <button>pause</button>
+            <dm-status-radio id="status"></dm-status-radio>
+            <!-- <input type="radio" name="status" value="do" id="do" />
+            <label for="do">do</label>
+            <input type="radio" name="status" value="done" id="done" />
+            <label for="done">done</label>
+            <input type="radio" name="status" value="pause" id="pause" />
+            <label for="pause">pause</label> -->
+            <input type="submit" value="update" />
           </span>
-        </div>
-        <div>
-          <label for="comment">comment</label>
-          <textarea id="comment"></textarea>
-          <input type="submit" />
         </div>
       </li>
     </template>
     <script>
-      const todos = [
-        { id: '111', title: 'todo1' },
-        { id: '222', title: 'todo2' },
-        { id: '333', title: 'todo3' },
-      ]
+      const todos = []
 
       async function load() {
+        console.debug('>>load')
         const ul = document.getElementById('ul')
         ul.textContent = null
-        const res = await fetch('/todos')
+        const headers = { Accept: 'application/vnd.danmaid+json' }
+        const res = await fetch('/todos', { headers })
         const data = await res.json()
         todos.splice(0, todos.length, ...data)
         const template = document.getElementById('list-item')
@@ -52,9 +59,37 @@
           const item = template.content.cloneNode(true)
           const title = item.getElementById('title')
           title.textContent = v.title
+          const status = item.getElementById('status')
+          status.setAttribute('value', v.status)
+          status.addEventListener('change', (ev) =>
+            status.setAttribute('value', ev.target.value)
+          )
           ul.append(item)
         })
+        // document.forms['update-form'].status.value = 'done'
+        console.debug('<<load')
       }
+      async function add() {
+        console.debug('>>add')
+        const form = document.forms['add-form']
+        console.debug('form', form)
+        console.debug('title', form.title.value)
+        const headers = { 'Content-Type': 'application/vnd.danmaid+json' }
+        const body = JSON.stringify({ title: form.title.value })
+        const res = await fetch('/todos', { method: 'POST', headers, body })
+        if (res.ok) {
+          form.reset()
+          load()
+        }
+        console.debug('<<add')
+      }
+
+      document.querySelectorAll('dm-status-radio').forEach((v) => {
+        console.log('attach', v)
+        v.addEventListener('change', (ev) =>
+          console.log('change!', ev.target.value, ev)
+        )
+      })
     </script>
   </body>
 </html>

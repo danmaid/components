@@ -6,7 +6,7 @@ sw.addEventListener('install', () => {
 
 const todos: unknown[] = [
   { id: '111', title: 'todo1' },
-  { id: '222', title: 'todo2' },
+  { id: '222', title: 'todo2', status: 'do' },
   { id: '333', title: 'todo3' },
 ]
 
