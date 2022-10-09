@@ -2,18 +2,10 @@
 <html>
   <head>
     <title>Example</title>
-    <script src="dm-radio.js"></script>
     <script src="stub.js" type="module"></script>
-    <style>
-      input[type='radio']:checked {
-        box-shadow: 0 0 0 3px orange;
-      }
-    </style>
   </head>
 
   <body>
-    <dm-status-radio></dm-status-radio>
-    <dm-status-radio value="done"></dm-status-radio>
     <div style="display: flex">
       <input type="search" style="flex: 1 1" />
     </div>
@@ -31,13 +23,12 @@
         <div style="display: flex; border-bottom: 1px solid grey">
           <span id="title" style="flex: 1 1"></span>
           <span id="action">
-            <dm-status-radio id="status"></dm-status-radio>
-            <!-- <input type="radio" name="status" value="do" id="do" />
+            <input type="radio" name="status" value="do" id="do" />
             <label for="do">do</label>
             <input type="radio" name="status" value="done" id="done" />
             <label for="done">done</label>
             <input type="radio" name="status" value="pause" id="pause" />
-            <label for="pause">pause</label> -->
+            <label for="pause">pause</label>
             <input type="submit" value="update" />
           </span>
         </div>
