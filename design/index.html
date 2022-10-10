@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Example</title>
+    <title>Todo List</title>
     <script src="stub.js" type="module"></script>
   </head>
 
@@ -13,7 +13,7 @@
         <th></th>
         <th></th>
       </thead>
-      <tbody id="ul"></tbody>
+      <tbody id="tbody"></tbody>
     </table>
     <form
       name="add-form"
@@ -25,7 +25,7 @@
     </form>
 
     <template id="list-item">
-      <tr>
+      <tr id="row">
         <td><input type="text" id="title" /></td>
         <td><span id="last"></span></td>
         <td>
@@ -50,22 +50,31 @@
         })
         const todos = await res.json()
         const template = document.querySelector('template#list-item')
-        const ul = document.getElementById('ul')
-        ul.textContent = null
-        todos.forEach(({ title, status, last_action, id }) => {
+        const tbody = document.getElementById('tbody')
+        tbody.textContent = null
+        todos.forEach(({ title, status, last_event, id }) => {
           const templ = template.content.cloneNode(true)
           const inputTitle = templ.getElementById('title')
           inputTitle.value = title
           inputTitle.onchange = (v) => patch(id, { title: v.target.value })
-          templ.getElementById('last').textContent = last_action?.message
-            ? last_action?.message
-            : JSON.stringify(last_action)
+          inputTitle.onclick = (e) => e.stopPropagation()
+          templ.getElementById('last').textContent = last_event?.message
+            ? last_event?.message
+            : JSON.stringify(last_event)
           const inputStatus = templ.getElementById('status')
           inputStatus.value = status
           inputStatus.onchange = (v) => patch(id, { status: v.target.value })
+          inputStatus.onclick = (e) => e.stopPropagation()
+          templ.getElementById('expand').onclick = (e) => e.stopPropagation()
+
+          // 2nd row
           const inputComment = templ.getElementById('comment')
           inputComment.onchange = (v) => addComment(id, v.target.value)
-          ul.append(templ)
+          templ.getElementById('row').onclick = (e) => {
+            // 実際は /todos/:id がいい
+            location.href = `detail.html?id=${id}`
+          }
+          tbody.append(templ)
         })
       }
 

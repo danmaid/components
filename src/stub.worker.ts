@@ -4,6 +4,29 @@ sw.addEventListener('install', () => {
   console.log('install.')
 })
 
+class PersistentArray<T> extends Array<T> {
+  constructor(public key: string, ...items: T[]) {
+    super()
+    super.push(...(this.load() || items))
+  }
+
+  load(): T[] | void {
+    const data = localStorage.getItem(this.key)
+    if (!data) return
+    return JSON.parse(data)
+  }
+
+  save(): void {
+    localStorage.setItem(this.key, JSON.stringify(this))
+  }
+
+  push(...items: T[]): number {
+    const result = super.push(...items)
+    this.save()
+    return result
+  }
+}
+
 interface Todo {
   id: string
   title: string
@@ -17,11 +40,18 @@ interface Todo {
   comments?: string[]
 }
 
-const todos: Todo[] = [
+const todos: Todo[] = new PersistentArray(
+  'todos',
   { id: '111', title: 'todo1' },
   { id: '222', title: 'todo2', status: 'do' },
-  { id: '333', title: 'todo3' },
-]
+  { id: '333', title: 'todo3' }
+)
+
+interface Event {
+  id?: string
+}
+
+const events: Event[] = new PersistentArray('events')
 
 sw.addEventListener('fetch', (ev) => {
   console.debug('fetch', ev.clientId, ev.request)
@@ -36,18 +66,19 @@ sw.addEventListener('fetch', (ev) => {
         console.debug('GET /todos/')
         const headers = { 'Content-Type': 'application/vnd.danmaid+json' }
         ev.respondWith(new Response(JSON.stringify(todos), { headers }))
-      }
-      if (req.method === 'POST') {
+      } else if (req.method === 'POST') {
         console.debug('POST /todos/')
+        const id = new Date().toISOString()
         ev.respondWith(
           (async function () {
             const todo = await req.json()
-            todos.push({
-              ...todo,
-              id: new Date().toISOString(),
-              last_action: { date: new Date(), type: 'created' },
+            const event = { ...todo, id, date: new Date(), type: 'created' }
+            events.push(event)
+            todos.push({ ...todo, id, last_event: event })
+            return new Response(JSON.stringify(event), {
+              status: 201,
+              headers: { 'Content-Type': 'application/json' },
             })
-            return new Response(null, { status: 201 })
           })()
         )
       }
@@ -60,15 +91,28 @@ sw.addEventListener('fetch', (ev) => {
         ev.respondWith(
           (async function () {
             const patch = await req.json()
-            Object.assign(todo, patch, {
-              last_action: {
-                date: new Date(),
-                type: 'updated',
-                keys: Object.keys(patch),
-              },
+            const event = {
+              id,
+              date: new Date(),
+              type: 'updated',
+              keys: Object.keys(patch),
+            }
+            Object.assign(todo, patch, { last_event: event })
+            return new Response(JSON.stringify(event), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
             })
-            return new Response(null, { status: 200 })
           })()
+        )
+      } else if (req.method === 'GET') {
+        console.log('GET /todos/:id', id)
+        const todo = todos.find((v) => v.id === id)
+        if (!todo) return ev.respondWith(new Response(null, { status: 404 }))
+        ev.respondWith(
+          new Response(JSON.stringify(todo), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
         )
       }
     } else if (/^\/todos\/[^\/]+\/comments$/.test(url.pathname)) {
@@ -91,6 +135,13 @@ sw.addEventListener('fetch', (ev) => {
             return new Response(null, { status: 200 })
           })()
         )
+      }
+    } else if (/^\/todos\/[^\/]+\/events$/.test(url.pathname)) {
+      const id = url.pathname.match(/^\/todos\/([^\/]+)/)?.[1]
+      if (req.method === 'GET') {
+        console.log('GET /todos/:id/events', id)
+        const data = events.filter((v) => v.id === id)
+        ev.respondWith(new Response(JSON.stringify(data), { status: 200 }))
       }
     }
   }
