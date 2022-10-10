@@ -6,81 +6,99 @@
   </head>
 
   <body>
-    <div style="display: flex">
-      <input type="search" style="flex: 1 1" />
-    </div>
     <div><button onclick="load()">refresh</button></div>
-    <form id="update-form">
-      <ul id="ul"></ul>
-    </form>
-    <form name="add-form" style="display: flex" onsubmit="add(); return false">
+    <table style="width: 100%; table-layout: fixed">
+      <thead>
+        <th></th>
+        <th></th>
+        <th></th>
+      </thead>
+      <tbody id="ul"></tbody>
+    </table>
+    <form
+      name="add-form"
+      style="display: flex"
+      onsubmit="add(this); return false"
+    >
       <textarea id="title" style="flex: 1 1"></textarea>
       <input type="submit" value="add" />
     </form>
 
     <template id="list-item">
-      <li>
-        <div style="display: flex; border-bottom: 1px solid grey">
-          <span id="title" style="flex: 1 1"></span>
-          <span id="action">
-            <input type="radio" name="status" value="do" id="do" />
-            <label for="do">do</label>
-            <input type="radio" name="status" value="done" id="done" />
-            <label for="done">done</label>
-            <input type="radio" name="status" value="pause" id="pause" />
-            <label for="pause">pause</label>
-            <input type="submit" value="update" />
-          </span>
-        </div>
-      </li>
+      <tr>
+        <td><input type="text" id="title" /></td>
+        <td><span id="last"></span></td>
+        <td>
+          <select id="status">
+            <option></option>
+            <option value="do">do</option>
+            <option value="pause">pause</option>
+            <option value="done">done</option>
+          </select>
+          <input type="checkbox" id="expand" />
+        </td>
+      </tr>
+      <tr>
+        <td colspan="3"><textarea id="comment"></textarea></td>
+      </tr>
     </template>
-    <script>
-      const todos = []
 
+    <script>
       async function load() {
-        console.debug('>>load')
+        const res = await fetch('/todos', {
+          headers: { Accept: 'application/vnd.danmaid+json' },
+        })
+        const todos = await res.json()
+        const template = document.querySelector('template#list-item')
         const ul = document.getElementById('ul')
         ul.textContent = null
-        const headers = { Accept: 'application/vnd.danmaid+json' }
-        const res = await fetch('/todos', { headers })
-        const data = await res.json()
-        todos.splice(0, todos.length, ...data)
-        const template = document.getElementById('list-item')
-        todos.forEach((v) => {
-          const item = template.content.cloneNode(true)
-          const title = item.getElementById('title')
-          title.textContent = v.title
-          const status = item.getElementById('status')
-          status.setAttribute('value', v.status)
-          status.addEventListener('change', (ev) =>
-            status.setAttribute('value', ev.target.value)
-          )
-          ul.append(item)
+        todos.forEach(({ title, status, last_action, id }) => {
+          const templ = template.content.cloneNode(true)
+          const inputTitle = templ.getElementById('title')
+          inputTitle.value = title
+          inputTitle.onchange = (v) => patch(id, { title: v.target.value })
+          templ.getElementById('last').textContent = last_action?.message
+            ? last_action?.message
+            : JSON.stringify(last_action)
+          const inputStatus = templ.getElementById('status')
+          inputStatus.value = status
+          inputStatus.onchange = (v) => patch(id, { status: v.target.value })
+          const inputComment = templ.getElementById('comment')
+          inputComment.onchange = (v) => addComment(id, v.target.value)
+          ul.append(templ)
         })
-        // document.forms['update-form'].status.value = 'done'
-        console.debug('<<load')
       }
-      async function add() {
-        console.debug('>>add')
-        const form = document.forms['add-form']
-        console.debug('form', form)
-        console.debug('title', form.title.value)
-        const headers = { 'Content-Type': 'application/vnd.danmaid+json' }
-        const body = JSON.stringify({ title: form.title.value })
-        const res = await fetch('/todos', { method: 'POST', headers, body })
+
+      async function add(form) {
+        const res = await fetch('/todos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/vnd.danmaid+json' },
+          body: JSON.stringify({ title: form.title.value }),
+        })
         if (res.ok) {
           form.reset()
           load()
         }
-        console.debug('<<add')
       }
 
-      document.querySelectorAll('dm-status-radio').forEach((v) => {
-        console.log('attach', v)
-        v.addEventListener('change', (ev) =>
-          console.log('change!', ev.target.value, ev)
-        )
-      })
+      async function patch(id, patch) {
+        const res = await fetch(`/todos/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/vnd.danmaid+json' },
+          body: JSON.stringify(patch),
+        })
+        if (res.ok) load()
+      }
+
+      async function addComment(id, comment) {
+        const res = await fetch(`/todos/${id}/comments`, {
+          method: 'POST',
+          body: comment,
+        })
+        if (res.ok) load()
+      }
+
+      window.addEventListener('load', () => load())
     </script>
   </body>
 </html>
