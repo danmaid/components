@@ -21,7 +21,7 @@
         document.getElementById('dump').textContent = todo
       }
 
-      async function load() {
+      async function loadEvents() {
         const res = await fetch(`/todos/${id}/events`)
         const todo = await res.text()
         document.getElementById('events').textContent = todo
