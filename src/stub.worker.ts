@@ -5,6 +5,7 @@ sw.addEventListener('install', () => {
 })
 
 class PersistentArray<T> extends Array<T> {
+  dbName = 'PersistentArray'
   name: string
   key: string
   db?: IDBDatabase
@@ -15,65 +16,76 @@ class PersistentArray<T> extends Array<T> {
     const name = (this.name = options.name)
     const key = (this.key = options.key || 'id')
 
-    const open = new Promise<IDBDatabase>((resolve) => {
-      const dbName = 'PersistentArray'
-      const check = indexedDB.open(dbName)
-      check.onerror = (ev) => console.error('open error.', ev)
-      check.onsuccess = () => {
-        console.log('opened.', name)
-        if (!check.result.objectStoreNames.contains(name)) {
-          console.log('to create', name)
-          const newVersion = check.result.version + 1
-          check.result.close()
-          const upgrade = indexedDB.open(dbName, newVersion)
-          upgrade.onblocked = (ev) => {
-            console.error('upgrade.onblocked', ev)
-          }
-          upgrade.onerror = (ev) => {
-            console.error('upgrade.onerror', ev)
-          }
-          upgrade.onupgradeneeded = () => {
-            console.log('upgrade.onupgradeneeded', name)
-            upgrade.result.createObjectStore(name, { keyPath: key })
-          }
-          upgrade.onsuccess = () => {
-            console.log('upgrade.onsuccess')
-            this.save(upgrade.result).then(() => resolve(upgrade.result))
-          }
-
-          super.push(...items)
-          console.log('<<to create.', name)
-        } else this.load(check.result).then(() => resolve(check.result))
-      }
-    })
-    open.then((db) => {
-      this.db = db
-    })
-  }
-
-  async load(db = this.db): Promise<void> {
-    if (!db) return
-    return new Promise((resolve) => {
-      const name = this.name
-      const g = db.transaction(name).objectStore(name).getAll()
-      g.onsuccess = () => {
-        super.splice(0, this.length, ...g.result)
-        console.log('loaded.')
-        resolve()
+    PersistentArray.open().then((db) => {
+      db.close()
+      if (db.objectStoreNames.contains(name)) {
+        this.getAll().then((items) => super.push(...items))
+      } else {
+        PersistentArray.upgrade(name, { keyPath: key }).then(() =>
+          this.push(...items)
+        )
       }
     })
   }
 
-  async save(db = this.db): Promise<void> {
-    if (!db) return
-    console.log('save')
-    return new Promise((resolve) => {
-      const name = this.name
-      const tran = db.transaction(name, 'readwrite')
-      const store = tran.objectStore(name)
-      super.forEach((item) => store.put(item))
+  static sequencer = Promise.resolve()
+  static async upgrade(
+    ...args: Parameters<typeof PersistentArray['createObjectStore']>
+  ): Promise<void> {
+    await this.sequencer
+    this.sequencer = this.createObjectStore(...args)
+    await this.sequencer
+  }
+
+  static async createObjectStore(
+    ...args: Parameters<IDBDatabase['createObjectStore']>
+  ): Promise<void> {
+    console.debug('upgrade', this.name)
+    const check = await this.open()
+    check.close()
+    const { version } = check
+    const upgrade = await this.open(version + 1, function () {
+      this.result.createObjectStore(...args)
+    })
+    upgrade.close()
+  }
+
+  static open(
+    version?: number,
+    upgrade?: IDBOpenDBRequest['onupgradeneeded']
+  ): Promise<IDBDatabase> {
+    console.debug('open', this.name)
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('PersistentArray', version)
+      if (upgrade) req.onupgradeneeded = upgrade
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+  }
+
+  async getAll(): Promise<T[]> {
+    console.debug('load', this.name)
+    const db = await PersistentArray.open()
+    const data = await new Promise<T[]>((resolve, reject) => {
+      const req = db.transaction(this.name).objectStore(this.name).getAll()
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    console.debug('loaded.', this.name)
+    db.close()
+    return data
+  }
+
+  async save(): Promise<void> {
+    console.debug('save', this.name)
+    const db = await PersistentArray.open()
+    await new Promise<void>((resolve) => {
+      const tran = db.transaction(this.name, 'readwrite')
+      const store = tran.objectStore(this.name)
+      this.forEach((item) => store.put(item))
       tran.oncomplete = () => resolve()
     })
+    db.close()
   }
 
   push(...items: T[]): number {

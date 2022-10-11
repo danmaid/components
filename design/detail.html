@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Todo Detail</title>
+    <script src="stub.js" type="module"></script>
+  </head>
+
+  <body>
+    <div>
+      <button onclick="load()">refresh</button>
+      <button onclick="loadEvents()">events</button>
+    </div>
+    <div id="dump"></div>
+    <div id="events"></div>
+
+    <script>
+      const id = new URLSearchParams(location.search).get('id')
+      async function load() {
+        const res = await fetch(`/todos/${id}`)
+        const todo = await res.text()
+        document.getElementById('dump').textContent = todo
+      }
+
+      async function load() {
+        const res = await fetch(`/todos/${id}/events`)
+        const todo = await res.text()
+        document.getElementById('events').textContent = todo
+      }
+
+      window.addEventListener('load', () => load())
+    </script>
+  </body>
+</html>

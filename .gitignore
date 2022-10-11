@@ -128,3 +128,4 @@ dist
 
 design/*
 !design/index.html
+!design/detail.html
