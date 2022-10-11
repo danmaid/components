@@ -11,28 +11,42 @@ class PersistentArray<T> extends Array<T> {
 
   constructor(options: { name: string; key?: string }, ...items: T[]) {
     super()
+    console.debug('Construct PersistentArray', options, items)
     const name = (this.name = options.name)
     const key = (this.key = options.key || 'id')
 
     const open = new Promise<IDBDatabase>((resolve) => {
       const dbName = 'PersistentArray'
       const check = indexedDB.open(dbName)
+      check.onerror = (ev) => console.error('open error.', ev)
       check.onsuccess = () => {
+        console.log('opened.', name)
         if (!check.result.objectStoreNames.contains(name)) {
+          console.log('to create', name)
           const newVersion = check.result.version + 1
           check.result.close()
           const upgrade = indexedDB.open(dbName, newVersion)
-          upgrade.onupgradeneeded = () =>
+          upgrade.onblocked = (ev) => {
+            console.error('upgrade.onblocked', ev)
+          }
+          upgrade.onerror = (ev) => {
+            console.error('upgrade.onerror', ev)
+          }
+          upgrade.onupgradeneeded = () => {
+            console.log('upgrade.onupgradeneeded', name)
             upgrade.result.createObjectStore(name, { keyPath: key })
-          upgrade.onsuccess = () =>
+          }
+          upgrade.onsuccess = () => {
+            console.log('upgrade.onsuccess')
             this.save(upgrade.result).then(() => resolve(upgrade.result))
+          }
 
           super.push(...items)
+          console.log('<<to create.', name)
         } else this.load(check.result).then(() => resolve(check.result))
       }
     })
     open.then((db) => {
-      console.log('opened.', db)
       this.db = db
     })
   }
