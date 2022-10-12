@@ -11,6 +11,7 @@
       <button onclick="loadEvents()">events</button>
     </div>
     <div id="dump"></div>
+    <hr />
     <div id="events"></div>
 
     <script>
@@ -23,11 +24,21 @@
 
       async function loadEvents() {
         const res = await fetch(`/todos/${id}/events`)
-        const todo = await res.text()
-        document.getElementById('events').textContent = todo
+        const events = await res.json()
+        if (!Array.isArray(events))
+          return console.error('invalid events.', events)
+
+        events.forEach((event) => {
+          const div = document.createElement('div')
+          div.textContent = JSON.stringify(event)
+          document.getElementById('events').append(div)
+        })
       }
 
-      window.addEventListener('load', () => load())
+      window.addEventListener('load', () => {
+        load()
+        loadEvents()
+      })
     </script>
   </body>
 </html>

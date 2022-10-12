@@ -31,7 +31,7 @@ const dbOpen = new Promise<IDBDatabase>((resolve, reject) => {
       db.createObjectStore('events', {
         keyPath: 'event_id',
         autoIncrement: true,
-      })
+      }).createIndex('id_index', 'id')
       const store = db.createObjectStore('todos', { keyPath: 'id' })
       store.transaction.oncomplete = () => resolve()
       store.transaction.onerror = () => reject(store.transaction.error)
@@ -47,25 +47,27 @@ const dbOpen = new Promise<IDBDatabase>((resolve, reject) => {
       { id: '222', title: 'todo2', status: 'doing' },
       { id: '333', title: 'todo3' },
     ]
-    await Promise.all(
-      data.map(async (todo) => {
-        const eventId = await new Promise<IDBValidKey>((resolve, reject) => {
-          const req = events.add({ date: new Date(), type: 'created', ...todo })
-          req.onsuccess = () => resolve(req.result)
-          req.onerror = () => reject(req.error)
-        })
-        const last_event = await new Promise((resolve, reject) => {
-          const req = events.get(eventId)
-          req.onsuccess = () => resolve(req.result)
-          req.onerror = () => reject(req.error)
-        })
-        await new Promise((resolve, reject) => {
-          const req = todos.add({ ...todo, last_event })
-          req.onsuccess = () => resolve(req.result)
-          req.onerror = () => reject(req.error)
-        })
+    data.map(async (todo) => {
+      const eventId = await new Promise<IDBValidKey>((resolve, reject) => {
+        const req = events.add({ date: new Date(), type: 'created', ...todo })
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
       })
-    )
+      const last_event = await new Promise((resolve, reject) => {
+        const req = events.get(eventId)
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+      await new Promise((resolve, reject) => {
+        const req = todos.add({ ...todo, last_event })
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => reject(req.error)
+      })
+    })
+    await new Promise<void>((resolve, reject) => {
+      tran.oncomplete = () => resolve()
+      tran.onerror = () => reject(tran.error)
+    })
   }
   req.onsuccess = () => resolve(req.result)
   req.onerror = () => reject(req.error)
@@ -95,45 +97,104 @@ sw.addEventListener('fetch', (ev) => {
             return new Response(JSON.stringify(todos), { headers })
           })()
         )
-        // } else if (req.method === 'POST') {
-        //   console.debug('POST /todos/')
-        //   const id = new Date().toISOString()
-        //   ev.respondWith(
-        //     (async function () {
-        //       const todo = await req.json()
-        //       const event = { ...todo, id, date: new Date(), type: 'created' }
-        //       events.push(event)
-        //       todos.push({ ...todo, id, last_event: event })
-        //       return new Response(JSON.stringify(event), {
-        //         status: 201,
-        //         headers: { 'Content-Type': 'application/json' },
-        //       })
-        //     })()
-        //   )
+      } else if (req.method === 'POST') {
+        console.debug('POST /todos/')
+        ev.respondWith(
+          (async function () {
+            const id = new Date().toISOString()
+            const todo = { ...(await req.json()), id }
+            const db = await dbOpen
+            const tran = db.transaction(['events', 'todos'], 'readwrite')
+            const events = tran.objectStore('events')
+            const todos = tran.objectStore('todos')
+
+            const eventId = await new Promise<IDBValidKey>(
+              (resolve, reject) => {
+                const req = events.add({
+                  date: new Date(),
+                  type: 'created',
+                  ...todo,
+                })
+                req.onsuccess = () => resolve(req.result)
+                req.onerror = () => reject(req.error)
+              }
+            )
+            const last_event = await new Promise((resolve, reject) => {
+              const req = events.get(eventId)
+              req.onsuccess = () => resolve(req.result)
+              req.onerror = () => reject(req.error)
+            })
+            const result = await new Promise((resolve, reject) => {
+              const req = todos.add({ ...todo, last_event })
+              req.onsuccess = () => resolve(req.result)
+              req.onerror = () => reject(req.error)
+            })
+            await new Promise<void>((resolve, reject) => {
+              tran.oncomplete = () => resolve()
+              tran.onerror = () => reject(tran.error)
+            })
+            return new Response(JSON.stringify(result), {
+              status: 201,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          })()
+        )
       }
     } else if (/^\/todos\/[^\/]+$/.test(url.pathname)) {
       const id = url.pathname.match(/^\/todos\/([^\/]+)$/)?.[1]
       if (!id) throw Error('invalid id.')
       if (req.method === 'PATCH') {
         console.log('PATCH /todos/:id', id)
-        //     const todo = todos.find((v) => v.id === id)
-        //     if (!todo) return ev.respondWith(new Response(null, { status: 404 }))
-        //     ev.respondWith(
-        //       (async function () {
-        //         const patch = await req.json()
-        //         const event = {
-        //           id,
-        //           date: new Date(),
-        //           type: 'updated',
-        //           keys: Object.keys(patch),
-        //         }
-        //         Object.assign(todo, patch, { last_event: event })
-        //         return new Response(JSON.stringify(event), {
-        //           status: 200,
-        //           headers: { 'Content-Type': 'application/json' },
-        //         })
-        //       })()
-        //     )
+        ev.respondWith(
+          (async function () {
+            const patch = await req.json()
+            const db = await dbOpen
+            const tran = db.transaction(['events', 'todos'], 'readwrite')
+            const events = tran.objectStore('events')
+            const todos = tran.objectStore('todos')
+
+            const todo = await new Promise<Todo | undefined>(
+              (resolve, reject) => {
+                const req = todos.get(id)
+                req.onsuccess = () => resolve(req.result)
+                req.onerror = () => reject(req.error)
+              }
+            )
+            if (!todo) return new Response(null, { status: 404 })
+
+            const eventId = await new Promise<IDBValidKey>(
+              (resolve, reject) => {
+                const req = events.add({
+                  date: new Date(),
+                  type: 'updated',
+                  id,
+                  keys: Object.keys(patch),
+                  ...patch,
+                })
+                req.onsuccess = () => resolve(req.result)
+                req.onerror = () => reject(req.error)
+              }
+            )
+            const last_event = await new Promise((resolve, reject) => {
+              const req = events.get(eventId)
+              req.onsuccess = () => resolve(req.result)
+              req.onerror = () => reject(req.error)
+            })
+            const result = await new Promise((resolve, reject) => {
+              const req = todos.put({ ...todo, ...patch, last_event })
+              req.onsuccess = () => resolve(req.result)
+              req.onerror = () => reject(req.error)
+            })
+            await new Promise<void>((resolve, reject) => {
+              tran.oncomplete = () => resolve()
+              tran.onerror = () => reject(tran.error)
+            })
+            return new Response(JSON.stringify(result), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          })()
+        )
       } else if (req.method === 'GET') {
         console.log('GET /todos/:id', id)
         ev.respondWith(
@@ -155,34 +216,87 @@ sw.addEventListener('fetch', (ev) => {
           })()
         )
       }
-      // } else if (/^\/todos\/[^\/]+\/comments$/.test(url.pathname)) {
-      //   const id = url.pathname.match(/^\/todos\/([^\/]+)/)?.[1]
-      //   if (req.method === 'POST') {
-      //     console.log('POST /todos/:id/comments', id)
-      //     const todo = todos.find((v) => v.id === id)
-      //     if (!todo) return ev.respondWith(new Response(null, { status: 404 }))
-      //     ev.respondWith(
-      //       (async function () {
-      //         const comment = await req.text()
-      //         if (!Array.isArray(todo.comments)) todo.comments = []
-      //         todo.comments.push(comment)
-      //         todo.last_action = {
-      //           date: new Date(),
-      //           type: 'updated',
-      //           keys: ['comments'],
-      //           message: comment,
-      //         }
-      //         return new Response(null, { status: 200 })
-      //       })()
-      //     )
-      //   }
-      // } else if (/^\/todos\/[^\/]+\/events$/.test(url.pathname)) {
-      //   const id = url.pathname.match(/^\/todos\/([^\/]+)/)?.[1]
-      //   if (req.method === 'GET') {
-      //     console.log('GET /todos/:id/events', id)
-      //     const data = events.filter((v) => v.id === id)
-      //     ev.respondWith(new Response(JSON.stringify(data), { status: 200 }))
-      //   }
+    } else if (/^\/todos\/[^\/]+\/comments$/.test(url.pathname)) {
+      const id = url.pathname.match(/^\/todos\/([^\/]+)/)?.[1]
+      if (!id) throw Error('invalid id.')
+      if (req.method === 'POST') {
+        console.log('POST /todos/:id/comments', id)
+        ev.respondWith(
+          (async function () {
+            const comment = await req.text()
+            const db = await dbOpen
+            const tran = db.transaction(['events', 'todos'], 'readwrite')
+            const events = tran.objectStore('events')
+            const todos = tran.objectStore('todos')
+
+            const todo = await new Promise<Todo | undefined>(
+              (resolve, reject) => {
+                const req = todos.get(id)
+                req.onsuccess = () => resolve(req.result)
+                req.onerror = () => reject(req.error)
+              }
+            )
+            if (!todo) return new Response(null, { status: 404 })
+
+            const eventId = await new Promise<IDBValidKey>(
+              (resolve, reject) => {
+                const req = events.add({
+                  date: new Date(),
+                  type: 'updated',
+                  id,
+                  keys: ['comments'],
+                  message: comment,
+                })
+                req.onsuccess = () => resolve(req.result)
+                req.onerror = () => reject(req.error)
+              }
+            )
+            const last_event = await new Promise((resolve, reject) => {
+              const req = events.get(eventId)
+              req.onsuccess = () => resolve(req.result)
+              req.onerror = () => reject(req.error)
+            })
+            const result = await new Promise((resolve, reject) => {
+              if (!Array.isArray(todo.comments)) todo.comments = []
+              todo.comments.push(comment)
+              const req = todos.put({ ...todo, last_event })
+              req.onsuccess = () => resolve(req.result)
+              req.onerror = () => reject(req.error)
+            })
+            await new Promise<void>((resolve, reject) => {
+              tran.oncomplete = () => resolve()
+              tran.onerror = () => reject(tran.error)
+            })
+            return new Response(JSON.stringify(result), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          })()
+        )
+      }
+    } else if (/^\/todos\/[^\/]+\/events$/.test(url.pathname)) {
+      const id = url.pathname.match(/^\/todos\/([^\/]+)/)?.[1]
+      if (!id) throw Error('invalid id.')
+      if (req.method === 'GET') {
+        console.log('GET /todos/:id/events', id, typeof id)
+        ev.respondWith(
+          (async function () {
+            const db = await dbOpen
+            const ids = db
+              .transaction('events')
+              .objectStore('events')
+              .index('id_index')
+
+            const data = await new Promise((resolve, reject) => {
+              const req = ids.getAll(id)
+              req.onsuccess = () => resolve(req.result)
+              req.onerror = () => reject(req.error)
+            })
+
+            return new Response(JSON.stringify(data), { status: 200 })
+          })()
+        )
+      }
     }
   }
 })
