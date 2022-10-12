@@ -6,7 +6,10 @@
   </head>
 
   <body>
-    <div><button onclick="load()">refresh</button></div>
+    <div>
+      <button onclick="load()">refresh</button>
+      <button onclick="attachEvents()">events</button>
+    </div>
     <table style="width: 100%; table-layout: fixed">
       <thead>
         <th></th>
@@ -15,6 +18,8 @@
       </thead>
       <tbody id="tbody"></tbody>
     </table>
+
+    <hr />
     <form
       name="add-form"
       style="display: flex"
@@ -23,6 +28,9 @@
       <textarea id="title" style="flex: 1 1"></textarea>
       <input type="submit" value="add" />
     </form>
+
+    <hr />
+    <div id="events"></div>
 
     <template id="list-item">
       <tr id="row">
@@ -105,6 +113,15 @@
           body: comment,
         })
         if (res.ok) load()
+      }
+
+      async function attachEvents() {
+        const events = new EventSource('/todos')
+        events.onmessage = ({ data }) => {
+          const event = document.createElement('div')
+          event.textContent = data
+          document.getElementById('events').append(event)
+        }
       }
 
       window.addEventListener('load', () => load())

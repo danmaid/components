@@ -73,6 +73,8 @@ const dbOpen = new Promise<IDBDatabase>((resolve, reject) => {
   req.onerror = () => reject(req.error)
 })
 
+const eventStream = new EventTarget()
+
 sw.addEventListener('fetch', (ev) => {
   console.debug('fetch', ev.clientId, ev.request)
   const req = ev.request
@@ -83,6 +85,35 @@ sw.addEventListener('fetch', (ev) => {
     console.debug('todos')
     if (/^\/todos\/?$/.test(url.pathname)) {
       if (req.method === 'GET') {
+        if (req.headers.get('Accept') === 'text/event-stream') {
+          console.debug('SSE /todos/')
+          ev.respondWith(
+            (async function () {
+              const stream = new ReadableStream({
+                start(controller) {
+                  eventStream.addEventListener('event', (ev) => {
+                    console.debug('event received.', ev)
+                    const e = (ev as CustomEvent).detail
+                    const t = `id: ${e.event_id}\ndata: ${JSON.stringify(
+                      e
+                    )}\n\n`
+                    controller.enqueue(
+                      Uint8Array.from(t, (x) => x.charCodeAt(0))
+                    )
+                  })
+                },
+              })
+              return new Response(stream, {
+                headers: {
+                  'Content-Type': 'text/event-stream',
+                  'Transfer-Encoding': 'chunked',
+                  Connection: 'keep-alive',
+                },
+              })
+            })()
+          )
+          return
+        }
         console.debug('GET /todos/')
         ev.respondWith(
           (async function () {
@@ -133,6 +164,9 @@ sw.addEventListener('fetch', (ev) => {
               tran.oncomplete = () => resolve()
               tran.onerror = () => reject(tran.error)
             })
+            eventStream.dispatchEvent(
+              new CustomEvent('event', { detail: last_event })
+            )
             return new Response(JSON.stringify(result), {
               status: 201,
               headers: { 'Content-Type': 'application/json' },
@@ -189,6 +223,9 @@ sw.addEventListener('fetch', (ev) => {
               tran.oncomplete = () => resolve()
               tran.onerror = () => reject(tran.error)
             })
+            eventStream.dispatchEvent(
+              new CustomEvent('event', { detail: last_event })
+            )
             return new Response(JSON.stringify(result), {
               status: 200,
               headers: { 'Content-Type': 'application/json' },
@@ -267,6 +304,9 @@ sw.addEventListener('fetch', (ev) => {
               tran.oncomplete = () => resolve()
               tran.onerror = () => reject(tran.error)
             })
+            eventStream.dispatchEvent(
+              new CustomEvent('event', { detail: last_event })
+            )
             return new Response(JSON.stringify(result), {
               status: 200,
               headers: { 'Content-Type': 'application/json' },
